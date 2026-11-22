@@ -1,426 +1,344 @@
-import json,os,time,sys
+import json,os,time
 import urllib.request as ureq
-
-sys.setrecursionlimit(10000)
-
-# Constants
-b3=100000
-bf=1000000
-bj=(0,100,320,330,500,900,0)
-
-# Move directions
-b4=[31,33,14,18,-31,-33,-14,-18]  # knight
-b1=[15,17,-15,-17]  # bishop
-b5=[1,-1,16,-16]    # rook
-b2=b1+b5            # queen
-
-# Castling data
-aj={4:((6,(5,6),7,1),(2,(3,2,1),0,2)),116:((118,(117,118),119,4),(114,(115,114,113),112,8))}
-
-# Piece-square tables (from side to move perspective)
-cp=(0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0)
-co=(-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50)
-cm=(-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20)
-cq=(0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0)
-cn=(-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20)
-
-bh=(None,cp,co,cm,cq,cp,cn)
-bg=[((7-(ae>>4))*8+(ae&7))for ae in range(128)]
-
-# Zobrist
-b0=20261122
-an=[[(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))for _ in range(128)]for _ in range(13)]
-ao=(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))
-al=[(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))for _ in range(16)]
-am=b0^b0<<13
-
-class bi:
-    def __init__(self):
-        self.j=[0]*128
-        self.ci=1
-        self.at=0
-        self.ax=-1
-        self.a2=0
-        self.a0=0
-        self.hash=0
-    def do(self,bm):
-        ab=bm.split()
-        self.j=[0]*128
-        ad=7
-        o=0
-        for ar in ab[0]:
-            if ar=="/":
-                ad-=1
-                o=0
-            elif ar.isdigit():
-                o+=int(ar)
-            else:
-                ae=ad*16+o
-                ba="PNBRQK".index(ar.upper())+1
-                ah=ba if ar.isupper() else -ba
-                self.j[ae]=ah
-                if ba==6:
-                    if ah>0:self.a2=ae
-                    else:self.a0=ae
-                o+=1
-        self.ci=1 if ab[1]=="w" else -1
-        self.at=0
-        au=ab[2]
-        self.at=sum(1<<z for z,k in enumerate("KQkq")if k in au)
-        self.ax=-1
-        if len(ab)>3 and ab[3]!="-":
-            self.ax=(int(ab[3][1])-1)*16+(ord(ab[3][0])-97)
-        y=0
-        for ae in range(128):
-            if not ae&8 and self.j[ae]:
-                y^=an[self.j[ae]+6][ae]
-        y^=ao if self.ci==1 else 0
-        y^=al[self.at]
-        if self.ax>=0:y^=am
-        self.hash=y
-
-def ds(a8,ae,aq):
-    j=a8.j
-    if aq==1:
-        for l in(-15,-17):
-            af=ae+l
-            if not af&136 and j[af]==1:return True
-    else:
-        for l in(15,17):
-            af=ae+l
-            if not af&136 and j[af]==-1:return True
-    for l in b4:
-        af=ae+l
-        if not af&136 and j[af]==2*aq:return True
-    for l in b2:
-        af=ae+l
-        if not af&136 and j[af]==6*aq:return True
-    for l in b1:
-        af=ae+l
-        while not af&136:
-            ah=j[af]
-            if ah:
-                if ah==3*aq or ah==5*aq:return True
-                break
-            af+=l
-    for l in b5:
-        af=ae+l
-        while not af&136:
-            ah=j[af]
-            if ah:
-                if ah==4*aq or ah==5*aq:return True
-                break
-            af+=l
-    return False
-
-def dz(a8,dy=False):
-    ci=a8.ci
-    j=a8.j
-    a5=[]
-    for ae in range(128):
-        if ae&8:continue
-        ah=j[ae]
-        if ah*ci<=0:continue
-        ba=ah*ci
-        if ba==1:
-            l=16*ci
-            ad=ae>>4
-            dm=7 if ci==1 else 0
-            for av in(l-1,l+1):
-                af=ae+av
-                if af&136:continue
-                if j[af]*ci<0 or af==a8.ax:
-                    if (af>>4)==dm:
-                        for a9 in(5,2,4,3):a5.append((ae,af,a9,0))
-                    else:a5.append((ae,af,0,0))
-            if not dy:
-                af=ae+l
-                if not af&136 and not j[af]:
-                    if (af>>4)==dm:
-                        for a9 in(5,2,4,3):a5.append((ae,af,a9,0))
-                    else:
-                        a5.append((ae,af,0,0))
-                        if ad==(1 if ci==1 else 6) and not j[af+l]:
-                            a5.append((ae,af+l,0,2))
-        elif ba==6:
-            for l in b2:
-                af=ae+l
-                if af&136:continue
-                if j[af]*ci<=0:a5.append((ae,af,0,0))
-            if not dy and ae in(4,116):
-                for az,aw,bb,ap in aj[ae]:
-                    if a8.at&ap and j[bb]==4*ci and not any(j[ai]for ai in aw)and not any(ds(a8,ai,-ci)for ai in aw+(ae,)):
-                        a5.append((ae,az,0,1))
-        else:
-            cd=b4 if ba==2 else(b1 if ba==3 else(b5 if ba==4 else b2))
-            for l in cd:
-                af=ae+l
-                while not af&136:
-                    ag=j[af]
-                    if ag*ci>0:break
-                    if not dy or ag:a5.append((ae,af,0,0))
-                    if ag or ba==2:break
-                    af+=l
-    return a5
-
-def cc(a8,aa):
-    ay,be,c3,b9=aa
-    j=a8.j
-    ah=j[ay]
-    bk=j[be]
-    cv=be
-    if not bk and abs(ah)==1 and be==a8.ax and(be&15)!=(ay&15):
-        cv=be-16*a8.ci
-        bk=j[cv]
-    ck=(bk,cv,a8.at,a8.ax,a8.hash)
-    y=a8.hash^an[ah+6][ay]
-    if bk:
-        y^=an[bk+6][cv]
-        j[cv]=0
-    a6=c3*a8.ci if c3 else ah
-    j[be]=a6
-    j[ay]=0
-    y^=an[a6+6][be]
-    if a6==6:a8.a2=be
-    elif a6==-6:a8.a0=be
-    a8.ax=(ay+be)//2 if(abs(ah)==1 and abs(be-ay)==32)else-1
-    if a8.ax>=0:y^=am
-    if abs(ah)==6 and b9==1:
-        if be==ay+2:
-            bb=j[ay+3]
-            j[ay+1]=bb
-            j[ay+3]=0
-            y^=an[bb+6][ay+3]^an[bb+6][ay+1]
-        else:
-            bb=j[ay-4]
-            j[ay-1]=bb
-            j[ay-4]=0
-            y^=an[bb+6][ay-4]^an[bb+6][ay-1]
-    a8.ci=-a8.ci
-    y^=ao
-    c2=a8.at
-    if ah==6:c2&=~3
-    elif ah==-6:c2&=~12
-    if ay==7 or be==7:c2&=~1
-    if ay==0 or be==0:c2&=~2
-    if ay==119 or be==119:c2&=~4
-    if ay==112 or be==112:c2&=~8
-    if c2!=a8.at:
-        y^=al[a8.at]^al[c2]
-        a8.at=c2
-    a8.hash=y
-    return ck
-
-def dh(a8,aa,ck):
-    ay,be,c3,b9=aa
-    bk,cv,a8.at,a8.ax,a8.hash=ck
-    a8.ci=-a8.ci
-    j=a8.j
-    ah=a8.ci if c3 else j[be]
-    j[ay]=ah
-    j[be]=0
-    if bk:j[cv]=bk
-    if ah==6:a8.a2=ay
-    elif ah==-6:a8.a0=ay
-    if b9==1:
-        if be==ay+2:
-            j[ay+3]=j[ay+1]
-            j[ay+1]=0
-        else:
-            j[ay-4]=j[ay-1]
-            j[ay-1]=0
-
-def du(a8):
-    bc=0
-    j=a8.j
-    for ae in range(128):
-        if ae&8:continue
-        ah=j[ae]
-        if not ah:continue
-        ab=abs(ah)
-        if ah>0:
-            bc+=bj[ab]+bh[ab][56-8*(ae>>4)+(ae&15)]
-        else:
-            bc-=bj[ab]+bh[ab][(ae>>4)*8+(ae&15)]
-    # Passed pawn bonus
-    for c in (1,-1):
-        mult=1 if c==1 else -1
-        for r in range(8):
-            for f in range(8):
-                sq=r*16+f
-                if j[sq]==c:
-                    passed=True
-                    for df in(-1,0,1):
-                        nf=f+df
-                        if 0<=nf<8:
-                            for nr in range(r+1,8)if c==1 else range(r-1,-1,-1):
-                                ns=nr*16+nf
-                                if j[ns]==-c:passed=False;break
-                            if not passed:break
-                    if passed:bc+=mult*20*(7-r if c==1 else r)
-        # Doubled pawn penalty
-        for f in range(8):
-            cnt=0
-            for r in range(8):
-                if j[r*16+f]==c:cnt+=1
-            if cnt>1:bc-=mult*15*(cnt-1)
-    # Tempo bonus
-    bc+=a8.ci*5
-    return bc*a8.ci
-
-cl=[0]
-dr=[0]
-ak={}
-MAX_PLY = 16  # Cap max ply depth
-
-def dn(a8,ct,b7):
-    cl[0]+=1
-    if cl[0]&1023==0 and time.time()>dr[0]:raise TimeoutError
-    c5=du(a8)
-    if c5>=b7:return c5
-    if c5>ct:ct=c5
-    b8=dz(a8,True)
-    b8.sort(key=lambda aa:-(abs(a8.j[aa[1]])or 1))
-    for aa in b8:
-        ck=cc(a8,aa)
-        # After move, a8.ci is side to move (opponent of mover)
-        # Check if side that JUST MOVED (-a8.ci) is in check BY side to move (a8.ci)
-        bo=a8.a2 if -a8.ci==1 else a8.a0
-        if ds(a8,bo,a8.ci):
-            dh(a8,aa,ck)
-            continue
-        bc=-dn(a8,-b7,-ct)
-        dh(a8,aa,ck)
-        if bc>=b7:return bc
-        if bc>ct:ct=bc
-    return ct
-
-def df(a8,cw,bq,ct,b7):
-    cl[0]+=1
-    if cl[0]&1023==0 and time.time()>dr[0]:raise TimeoutError
-    y=a8.hash
-    if bq and y in ak:
-        bw,dg,c6,bv,bu=ak[y]
-        if dg>=cw:
-            if c6==0:return bv
-            if c6==1 and bv>=b7:return bv
-            if c6==2 and bv<=ct:return bv
-    # Check if side to move is in check (before making move)
-    bl=ds(a8,a8.a2 if a8.ci==1 else a8.a0,-a8.ci)
-    if cw<=0:return dn(a8,ct,b7)
-    b6=-bf
-    cu=None
-    a5=dz(a8)
-    de=[]
-    for aa in a5:
-        bs=0
-        if y in ak and ak[y][4]==aa:bs=1<<30
-        elif a8.j[aa[1]]:
-            bs=1000000+100*abs(a8.j[aa[1]])-abs(a8.j[aa[0]])
-        else:bs=0
-        de.append((bs,aa))
-    de.sort(key=lambda ai:-ai[0])
-    c0=0
-    for a,aa in de:
-        ck=cc(a8,aa)
-        # After move, a8.ci is side to move (opponent of mover)
-        # Check if side that JUST MOVED (-a8.ci) is in check BY side to move (a8.ci)
-        bo=a8.a2 if -a8.ci==1 else a8.a0
-        if ds(a8,bo,a8.ci):
-            dh(a8,aa,ck)
-            continue
-        c0+=1
-        # NO check extension - just standard depth
-        bc=-df(a8,cw-1,bq+1,-b7,-ct)
-        dh(a8,aa,ck)
-        if bc>b6:b6=bc;cu=aa
-        if bc>ct:ct=bc
-        if ct>=b7:break
-    if not c0:return -b3+bq if bl else 0
-    ak[y]=(y,cw,1 if b6>=b7 else(2 if b6<=ct else 0),b6,cu)
-    return b6
-
-def d0(a8,dc=3500):
-    global ak
-    ak={}
-    cl[0]=0
-    dr[0]=time.time()+dc/1e3
-    a5=dz(a8)
-    de=[]
-    for aa in a5:
-        ck=cc(a8,aa)
-        # After move, a8.ci is side to move
-        # Check if side that JUST MOVED (-a8.ci) is in check BY side to move (a8.ci)
-        bo=a8.a2 if -a8.ci==1 else a8.a0
-        bt=not ds(a8,bo,a8.ci)
-        dh(a8,aa,ck)
-        if bt:de.append(aa)
-    if not de:return None
-    cu=de[0]
-    for cw in range(1,MAX_PLY+1):
-        dt=None
-        c9=-bf
-        ct=-bf
-        try:
-            for aa in de:
-                ck=cc(a8,aa)
-                bc=-df(a8,cw-1,1,-bf,-ct)
-                dh(a8,aa,ck)
-                if bc>c9:c9=bc;dt=aa
-                if bc>ct:ct=bc
-            cu=dt
-            if c9>99000:break
-        except TimeoutError:break
-    return cu
-
-def dp(ae):return chr(97+(ae&15))+str((ae>>4)+1)
-def dv(aa):
-    ay,be,c3,a=aa
-    ag=dp(ay)+dp(be)
-    if c3:ag+="nbrq"[c3-1]if c3 in(2,3,4,5)else""
-    return ag
-def dx(bm,a4=3500):
-    a8=bi()
-    a8.do(bm)
-    aa=d0(a8,a4)
-    return aa
-
-def dw(bx,ce,bp):
-    ac=json.dumps(bp).encode()
-    br=ureq.Request(bx+ce,data=ac,headers={"Content-Type":"application/json"},method="POST")
-    return json.loads(ureq.urlopen(br,timeout=8).read().decode())
-
-def cb():
-    bx=os.environ["MAKEFUN_ENV_URL"]
-    w=None
-    bz=cx=ca=0
-    ad=dw(bx,"/game",{})
-    while True:
-        bd=ad.get("status")
-        if bd=="done"or ad.get("outcome"):
-            a7=ad.get("outcome")
-            if a7=="win":bz+=1
-            elif a7=="loss":ca+=1
-            else:cx+=1
-            if"wins"in ad:bz=ad["wins"];cx=ad["draws"];ca=ad["losses"]
-            ad=dw(bx,"/game",{})
-            if ad.get("status")=="done"or ad.get("outcome"):break
-            continue
-        if bd!="your_move":break
-        w=ad.get("game",w)
-        bm=ad["fen"]
-        a5=None
-        try:
-            aa=dx(bm,3500)
-            if aa is None:raise RuntimeError("no moves")
-            a5=dv(aa)
-        except Exception as n:
-            a3=ad.get("legal_moves")
-            if a3:a5=a3[0]
-            else:break
-        try:
-            ad=dw(bx,"/move",{"game":w,"move":a5})
-        except Exception as n:break
-
-if __name__=="__main__":cb()
-
+M=100000;I=1000000
+V=(0,100,320,330,500,900,0)
+N=(31,33,14,18,-31,-33,-14,-18)
+K=(15,17,-15,-17)
+S=(1,-1,16,-16)
+KS=K+S
+C={4:((6,(5,6),7,1),(2,(3,2,1),0,2)),116:((118,(117,118),119,4),(114,(115,114,113),112,8))}
+P=(
+0,0,0,0,0,0,0,0,
+50,50,50,50,50,50,50,50,
+10,10,20,30,30,20,10,10,
+5,5,10,25,25,10,5,5,
+0,0,0,20,20,0,0,0,
+5,-5,-10,0,0,-10,-5,5,
+5,10,10,-20,-20,10,10,5,
+0,0,0,0,0,0,0,0)
+Nt=(
+-50,-40,-30,-30,-30,-30,-40,-50,
+-40,-20,0,0,0,0,-20,-40,
+-30,0,10,15,15,10,0,-30,
+-30,5,15,20,20,15,5,-30,
+-30,0,15,20,20,15,0,-30,
+-30,5,10,15,15,10,5,-30,
+-40,-20,0,5,5,0,-20,-40,
+-50,-40,-30,-30,-30,-30,-40,-50)
+B=(
+-20,-10,-10,-10,-10,-10,-10,-20,
+-10,0,0,0,0,0,0,-10,
+-10,0,5,10,10,5,0,-10,
+-10,5,5,10,10,5,5,-10,
+-10,0,10,10,10,10,0,-10,
+-10,10,10,10,10,10,10,-10,
+-10,5,0,0,0,0,5,-10,
+-20,-10,-10,-10,-10,-10,-10,-20)
+Q=(
+0,0,0,0,0,0,0,0,
+5,10,10,10,10,10,10,5,
+-5,0,0,0,0,0,0,-5,
+-5,0,0,0,0,0,0,-5,
+-5,0,0,0,0,0,0,-5,
+-5,0,0,0,0,0,0,-5,
+-5,0,0,0,0,0,0,-5,
+0,0,0,5,5,0,0,0)
+Kg=(
+-30,-40,-40,-50,-50,-40,-40,-30,
+-30,-40,-40,-50,-50,-40,-40,-30,
+-30,-40,-40,-50,-50,-40,-40,-30,
+-30,-40,-40,-50,-50,-40,-40,-30,
+-20,-30,-30,-40,-40,-30,-30,-20,
+-10,-20,-20,-20,-20,-20,-20,-10,
+20,20,0,0,0,0,20,20,
+20,30,10,0,0,10,30,20)
+PS=(None,P,Nt,B,Q,P,Kg)
+SQ=[((7-(i>>4))*8+(i&7))for i in range(128)]
+Z=20261122
+def R(s):return(s*6364136223846793005+1442695040888963407)%18446744073709551616
+ZP=[[0]*128 for _ in range(13)]
+for p in range(13):
+ for s in range(128):Z=R(Z);ZP[p][s]=Z
+ZS=R(Z)
+ZC=[0]*16
+for i in range(16):Z=R(Z);ZC[i]=Z
+ZE=R(Z)^(R(Z)<<13)
+class B:
+ def __init__(s):
+  s.b=[0]*128;s.c=1;s.p=0;s.C=0;s.E=-1;s.K=[0,0];s.h=0
+ def F(s,f):
+  p=f.split();s.b=[0]*128;r=7;fl=0
+  for ch in p[0]:
+   if ch=="/":r-=1;fl=0
+   elif ch.isdigit():fl+=int(ch)
+   else:
+    sq=r*16+fl;pt="PNBRQK".index(ch.upper())+1;pc=pt if ch.isupper()else-pt
+    s.b[sq]=pc
+    if pt==6:s.K[0 if pc>0 else 1]=sq
+    fl+=1
+  s.c=1 if p[1]=="w"else-1;s.p=0;s.C=0
+  for i,ch in enumerate("KQkq"):
+   if ch in p[2]:s.C|=1<<i
+  s.E=-1
+  if len(p)>3 and p[3]!="-":s.E=(int(p[3][1])-1)*16+ord(p[3][0])-97
+  h=0
+  for sq in range(128):
+   if not sq&8 and s.b[sq]:h^=ZP[s.b[sq]+6][sq]
+  if s.c==1:h^=ZS
+  h^=ZC[s.C]
+  if s.E>=0:h^=ZE
+  s.h=h
+def A(b,k,c):
+ j=b.b
+ if c==1:
+  for d in(-15,-17):
+   t=k+d
+   if not t&136 and j[t]==1:return 1
+ else:
+  for d in(15,17):
+   t=k+d
+   if not t&136 and j[t]==-1:return 1
+ for d in N:
+  t=k+d
+  if not t&136 and j[t]==2*c:return 1
+ for d in KS:
+  t=k+d
+  if not t&136 and j[t]==6*c:return 1
+ for d in K:
+  t=k+d
+  while not t&136:
+   p=j[t]
+   if p:
+    if p==3*c or p==5*c:return 1
+    break
+   t+=d
+ for d in S:
+  t=k+d
+  while not t&136:
+   p=j[t]
+   if p:
+    if p==4*c or p==5*c:return 1
+    break
+   t+=d
+ return 0
+def G(b,q=0):
+ c=b.c;j=b.b;m=[]
+ for sq in range(128):
+  if sq&8:continue
+  p=j[sq]
+  if p*c<=0:continue
+  pt=p*c
+  if pt==1:
+   f=16*c;pr=7 if c==1 else 0
+   for d in(f-1,f+1):
+    t=sq+d
+    if t&136:continue
+    if j[t]*c<0 or t==b.E:
+     if t>>4==pr:
+      for pm in(5,2,4,3):m.append((sq,t,pm,0))
+     else:m.append((sq,t,0,0))
+   if not q:
+    t=sq+f
+    if not t&136 and not j[t]:
+     if t>>4==pr:
+      for pm in(5,2,4,3):m.append((sq,t,pm,0))
+     else:
+      m.append((sq,t,0,0))
+      if sq>>4==(1 if c==1 else 6)and not j[t+f]:m.append((sq,t+f,0,2))
+  elif pt==6:
+   for d in KS:
+    t=sq+d
+    if t&136:continue
+    if j[t]*c<=0:m.append((sq,t,0,0))
+   if not q and sq in C:
+    for kt,pa,rt,rm in C[sq]:
+     if b.C&rm and j[rt]==4*c and not any(j[x]for x in pa)and not any(A(b,x,-c)for x in pa+(sq,)):
+      m.append((sq,kt,0,1))
+  else:
+   dD=N if pt==2 else(K if pt==3 else(S if pt==4 else KS))
+   for d in dD:
+    t=sq+d
+    while not t&136:
+     tp=j[t]
+     if tp*c>0:break
+     if not q or tp:m.append((sq,t,0,0))
+     if tp or pt==2:break
+     t+=d
+ return m
+def Mv(b,m):
+ f,t,pm,fl=m;j=b.b;pc=j[f];c=b.c
+ u=(j[t],t,b.C,b.E,b.h)
+ h=b.h^ZP[pc+6][f]
+ # En passant capture
+ if abs(pc)==1 and t==b.E and (t&15)!=(f&15):
+  cv=t-16*c
+  h^=ZP[j[cv]+6][cv]
+  j[cv]=0
+ elif j[t]:
+  h^=ZP[j[t]+6][t];j[t]=0
+ mp=pm*c if pm else pc
+ j[t]=mp;j[f]=0
+ h^=ZP[mp+6][t]
+ if mp==6:b.K[0]=t
+ elif mp==-6:b.K[1]=t
+ b.E=(f+t)//2 if abs(pc)==1 and abs(t-f)==32 else-1
+ if b.E>=0:h^=ZE
+ if abs(pc)==6 and fl==1:
+  if t==f+2:
+   r=j[f+3];j[f+1]=r;j[f+3]=0;h^=ZP[r+6][f+3]^ZP[r+6][f+1]
+  else:
+   r=j[f-4];j[f-1]=r;j[f-4]=0;h^=ZP[r+6][f-4]^ZP[r+6][f-1]
+ b.c=-b.c;h^=ZS
+ oc=b.C
+ if pc==6:b.C&=~3
+ elif pc==-6:b.C&=~12
+ if f==7 or t==7:b.C&=~1
+ if f==0 or t==0:b.C&=~2
+ if f==119 or t==119:b.C&=~4
+ if f==112 or t==112:b.C&=~8
+ if b.C!=oc:h^=ZC[oc]^ZC[b.C]
+ b.h=h
+ return u
+def U(b,m,u):
+ f,t,pm,fl=m;cp,cs,oc,oe,oh=u;j=b.b;pc=j[t];c=b.c
+ b.C=oc;b.E=oe;b.h=oh;b.c=-b.c
+ j[f]=pc;j[t]=0
+ if cp:j[cs]=cp
+ # En passant capture
+ if abs(pc)==1 and cs==oe and (cs&15)!=(f&15):
+  cv=cs+16*c
+  j[cv]=-pc
+ if abs(pc)==6 and fl==1:
+  if t==f+2:j[f+3]=j[f+1];j[f+1]=0
+  else:j[f-4]=j[f-1];j[f-1]=0
+ if pc==6:b.K[0]=f
+ elif pc==-6:b.K[1]=f
+def E(b):
+ s=0;j=b.b
+ for sq in range(128):
+  if sq&8:continue
+  p=j[sq]
+  if not p:continue
+  pt=abs(p);ix=SQ[sq]
+  if p>0:s+=V[pt]+PS[pt][ix]
+  else:s-=V[pt]+PS[pt][ix]
+ return s*b.c
+n=[0];dl=[0];TT={}
+def Q(b,a,b_):
+ n[0]+=1
+ if n[0]&1023==0 and time.time()>dl[0]:raise TimeoutError
+ s=E(b)
+ if s>=b_:return s
+ if s>a:a=s
+ c=b.c;k=b.K[0]if c==1 else b.K[1]
+ m=G(b,1);m.sort(key=lambda x:-(abs(b.b[x[1]])or 1))
+ for mv in m:
+  u=Mv(b,mv)
+  nk=b.K[0]if b.c==-1 else b.K[1]
+  if A(b,nk,b.c):U(b,mv,u);continue
+  sc=-Q(b,-b_,-a)
+  U(b,mv,u)
+  if sc>=b_:return sc
+  if sc>a:a=sc
+ return a
+def Srch(b,d,pl,a,b_):
+ n[0]+=1
+ if n[0]&1023==0 and time.time()>dl[0]:raise TimeoutError
+ h=b.h
+ if pl and h in TT:
+  th,td,tf,ts,tm=TT[h]
+  if td>=d:
+   if tf==0:return ts
+   if tf==1 and ts>=b_:return ts
+   if tf==2 and ts<=a:return ts
+ c=b.c;k=b.K[0]if c==1 else b.K[1]
+ chk=A(b,k,-c)
+ if d<=0:return Q(b,a,b_)
+ m=G(b)
+ o=[]
+ for mv in m:
+  sc=0
+  if h in TT and TT[h][4]==mv:sc=1<<30
+  elif b.b[mv[1]]:sc=I+100*abs(b.b[mv[1]])-abs(b.b[mv[0]])
+  o.append((sc,mv))
+ o.sort(key=lambda x:-x[0])
+ bm=None;bs=-I;mc=0
+ for _,mv in o:
+  u=Mv(b,mv)
+  nk=b.K[0]if b.c==-1 else b.K[1]
+  if A(b,nk,b.c):U(b,mv,u);continue
+  mc+=1
+  sc=-Srch(b,d-1,pl+1,-b_,-a)
+  U(b,mv,u)
+  if sc>bs:bs=sc;bm=mv
+  if sc>a:a=sc
+  if a>=b_:break
+ if not mc:return-M+pl if chk else 0
+ if bs>=b_:tf=1
+ elif bs<=a:tf=2
+ else:tf=0
+ TT[h]=(h,d,tf,bs,bm)
+ return bs
+def D(f,tl=3000):
+ global TT
+ TT={};n[0]=0;dl[0]=time.time()+tl/1e3
+ b=B();b.F(f)
+ m=G(b);l=[]
+ c=b.c
+ for mv in m:
+  u=Mv(b,mv)
+  k=b.K[0]if b.c==-1 else b.K[1]
+  if not A(b,k,b.c):l.append(mv)
+  U(b,mv,u)
+ if not l:return None
+ bm=l[0]
+ for d in range(1,64):
+  try:
+   a=-I;b_=-I;bt=None
+   o=[]
+   for mv in l:
+    sc=0
+    if b.h in TT and TT[b.h][4]==mv:sc=1<<30
+    elif b.b[mv[1]]:sc=I+100*abs(b.b[mv[1]])-abs(b.b[mv[0]])
+    o.append((sc,mv))
+   o.sort(key=lambda x:-x[0])
+   for _,mv in o:
+    u=Mv(b,mv)
+    k=b.K[0]if b.c==-1 else b.K[1]
+    if A(b,k,b.c):U(b,mv,u);continue
+    sc=-Srch(b,d-1,1,-I,-a)
+    U(b,mv,u)
+    if sc>a:a=sc;bt=mv
+   if bt:bm=bt
+   if a>99000:break
+  except TimeoutError:break
+ return bm
+def U2(sq):return chr(97+(sq&15))+str((sq>>4)+1)
+def U3(m):
+ f,t,pm,_=m;u=U2(f)+U2(t)
+ if pm:u+=" nbrq"[pm-1]if pm in(2,3,4,5)else""
+ return u
+def run():
+ u=os.environ["MAKEFUN_ENV_URL"];g=None;w=d=l=0
+ while 1:
+  r=json.loads(ureq.urlopen(ureq.Request(u+"/game",data=b"{}",headers={"Content-Type":"application/json"},method="POST"),timeout=8).read().decode())
+  st=r.get("status");o=r.get("outcome")
+  if st=="done"or o:
+   if o=="win":w+=1
+   elif o=="loss":l+=1
+   else:d+=1
+   if"wins"in r:w=r["wins"];d=r["draws"];l=r["losses"]
+   r=json.loads(ureq.urlopen(ureq.Request(u+"/game",data=b"{}",headers={"Content-Type":"application/json"},method="POST"),timeout=8).read().decode())
+   if r.get("status")=="done"or r.get("outcome"):break
+   continue
+  if st!="your_move":break
+  g=r.get("game",g);f=r["fen"]
+  try:
+   mv=D(f,3000)
+   if mv is None:raise RuntimeError
+   um=U3(mv)
+  except:um=r.get("legal_moves",[0])[0]
+  try:
+   r=json.loads(ureq.urlopen(ureq.Request(u+"/move",data=json.dumps({"game":g,"move":um}).encode(),headers={"Content-Type":"application/json"},method="POST"),timeout=8).read().decode())
+  except:break
+if __name__=="__main__":run()
