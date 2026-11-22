@@ -442,7 +442,7 @@ def cb ():
 	ad=dw (bx,"/game",{})
 	while True:
 		bd=ad.get ("status")
-		if bd=="done" or "outcome" in ad:
+		if bd=="done" or ad.get("outcome"):
 			a7=ad.get ("outcome")
 			if a7=="win":
 				bz +=1
@@ -455,7 +455,7 @@ def cb ():
 				cx=ad ["draws"]
 				ca=ad ["losses"]
 			ad=dw (bx,"/game",{})
-			if ad.get ("status")=="done" or "outcome" in ad:
+			if ad.get ("status")=="done" or ad.get("outcome"):
 				break
 			continue
 		if bd !="your_move":
