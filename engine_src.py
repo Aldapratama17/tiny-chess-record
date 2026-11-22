@@ -390,11 +390,10 @@ def d0 (a8,dc=3000):
 	for aa in a5:
 		ck=cc (a8,aa)
 		bo=a8.a2 if a8.ci==- 1 else a8.a0
-		if ds (a8,bo,a8.ci):
-			dh (a8,aa,ck)
-			continue
+		bt=not ds (a8,bo,a8.ci)
 		dh (a8,aa,ck)
-		de.append (aa)
+		if bt:
+			de.append (aa)
 	if not de:
 		return None
 	cu=de [0]
