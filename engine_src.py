@@ -1,37 +1,51 @@
-import json,os,time
+import json,os,time,sys
 import urllib.request as ureq
+
+sys.setrecursionlimit(10000)
+
+# Constants
 b3=100000
 bf=1000000
 bj=(0,100,320,330,500,900,0)
-b4=[31,33,14,18,-31,-33,-14,-18]
-b1=[15,17,-15,-17]
-b5=[1,-1,16,-16]
-b2=b1+b5
+
+# Move directions
+b4=[31,33,14,18,-31,-33,-14,-18]  # knight
+b1=[15,17,-15,-17]  # bishop
+b5=[1,-1,16,-16]    # rook
+b2=b1+b5            # queen
+
+# Castling data
 aj={4:((6,(5,6),7,1),(2,(3,2,1),0,2)),116:((118,(117,118),119,4),(114,(115,114,113),112,8))}
+
+# Piece-square tables (from side to move perspective)
 cp=(0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0)
 co=(-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50)
 cm=(-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20)
 cq=(0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0)
 cn=(-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20)
+
 bh=(None,cp,co,cm,cq,cp,cn)
 bg=[((7-(ae>>4))*8+(ae&7))for ae in range(128)]
+
+# Zobrist
 b0=20261122
-an=[[(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))for a in range(128)]for a in range(13)]
+an=[[(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))for _ in range(128)]for _ in range(13)]
 ao=(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))
-al=[(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))for a in range(16)]
+al=[(b0:=(b0*6364136223846793005+1442695040888963407)%(1<<64))for _ in range(16)]
 am=b0^b0<<13
+
 class bi:
-    def __init__(cg):
-        cg.j=[0]*128
-        cg.ci=1
-        cg.at=0
-        cg.ax=-1
-        cg.a2=0
-        cg.a0=0
-        cg.hash=0
-    def do(cg,bm):
+    def __init__(self):
+        self.j=[0]*128
+        self.ci=1
+        self.at=0
+        self.ax=-1
+        self.a2=0
+        self.a0=0
+        self.hash=0
+    def do(self,bm):
         ab=bm.split()
-        cg.j=[0]*128
+        self.j=[0]*128
         ad=7
         o=0
         for ar in ab[0]:
@@ -44,26 +58,27 @@ class bi:
                 ae=ad*16+o
                 ba="PNBRQK".index(ar.upper())+1
                 ah=ba if ar.isupper() else -ba
-                cg.j[ae]=ah
+                self.j[ae]=ah
                 if ba==6:
-                    if ah>0:cg.a2=ae
-                    else:cg.a0=ae
+                    if ah>0:self.a2=ae
+                    else:self.a0=ae
                 o+=1
-        cg.ci=1 if ab[1]=="w" else -1
-        cg.at=0
+        self.ci=1 if ab[1]=="w" else -1
+        self.at=0
         au=ab[2]
-        cg.at=sum(1<<z for z,k in enumerate("KQkq")if k in au)
-        cg.ax=-1
+        self.at=sum(1<<z for z,k in enumerate("KQkq")if k in au)
+        self.ax=-1
         if len(ab)>3 and ab[3]!="-":
-            cg.ax=(int(ab[3][1])-1)*16+(ord(ab[3][0])-97)
+            self.ax=(int(ab[3][1])-1)*16+(ord(ab[3][0])-97)
         y=0
         for ae in range(128):
-            if not ae&8 and cg.j[ae]:
-                y^=an[cg.j[ae]+6][ae]
-        y^=ao if cg.ci==1 else 0
-        y^=al[cg.at]
-        if cg.ax>=0:y^=am
-        cg.hash=y
+            if not ae&8 and self.j[ae]:
+                y^=an[self.j[ae]+6][ae]
+        y^=ao if self.ci==1 else 0
+        y^=al[self.at]
+        if self.ax>=0:y^=am
+        self.hash=y
+
 def ds(a8,ae,aq):
     j=a8.j
     if aq==1:
@@ -97,6 +112,7 @@ def ds(a8,ae,aq):
                 break
             af+=l
     return False
+
 def dz(a8,dy=False):
     ci=a8.ci
     j=a8.j
@@ -146,6 +162,7 @@ def dz(a8,dy=False):
                     if ag or ba==2:break
                     af+=l
     return a5
+
 def cc(a8,aa):
     ay,be,c3,b9=aa
     j=a8.j
@@ -193,6 +210,7 @@ def cc(a8,aa):
         a8.at=c2
     a8.hash=y
     return ck
+
 def dh(a8,aa,ck):
     ay,be,c3,b9=aa
     bk,cv,a8.at,a8.ax,a8.hash=ck
@@ -211,6 +229,7 @@ def dh(a8,aa,ck):
         else:
             j[ay-4]=j[ay-1]
             j[ay-1]=0
+
 def du(a8):
     bc=0
     j=a8.j
@@ -223,17 +242,9 @@ def du(a8):
             bc+=bj[ab]+bh[ab][56-8*(ae>>4)+(ae&15)]
         else:
             bc-=bj[ab]+bh[ab][(ae>>4)*8+(ae&15)]
-    # Pawn structure eval
-    for c in(1,-1):
+    # Passed pawn bonus
+    for c in (1,-1):
         mult=1 if c==1 else -1
-        # Doubled pawns
-        for f in range(8):
-            cnt=0
-            for r in range(8):
-                sq=r*16+f
-                if j[sq]==c:cnt+=1
-            if cnt>1:bc-=mult*15*(cnt-1)
-        # Passed pawns
         for r in range(8):
             for f in range(8):
                 sq=r*16+f
@@ -247,31 +258,21 @@ def du(a8):
                                 if j[ns]==-c:passed=False;break
                             if not passed:break
                     if passed:bc+=mult*20*(7-r if c==1 else r)
-        # King safety - pawn shield
-        ks=a8.a2 if c==1 else a8.a0
-        kr,ksf=ks>>4,ks&15
-        shield=0
-        for df in(-1,0,1):
-            nf=ksf+df
-            if 0<=nf<8:
-                for dr in(-1,0,1)if c==1 else(1,0,-1):
-                    nr=kr+dr
-                    if 0<=nr<8:
-                        ns=nr*16+nf
-                        if j[ns]==c:shield+=1
-        if shield<3:bc-=mult*30*(3-shield)
-    # Mobility (cheap)
-    oci=a8.ci
-    a8.ci=1
-    wm=len(dz(a8,True))
-    a8.ci=-1
-    bm=len(dz(a8,True))
-    a8.ci=oci
-    bc+=(wm-bm)//4
+        # Doubled pawn penalty
+        for f in range(8):
+            cnt=0
+            for r in range(8):
+                if j[r*16+f]==c:cnt+=1
+            if cnt>1:bc-=mult*15*(cnt-1)
+    # Tempo bonus
+    bc+=a8.ci*5
     return bc*a8.ci
+
 cl=[0]
 dr=[0]
 ak={}
+MAX_PLY = 16  # Cap max ply depth
+
 def dn(a8,ct,b7):
     cl[0]+=1
     if cl[0]&1023==0 and time.time()>dr[0]:raise TimeoutError
@@ -282,7 +283,9 @@ def dn(a8,ct,b7):
     b8.sort(key=lambda aa:-(abs(a8.j[aa[1]])or 1))
     for aa in b8:
         ck=cc(a8,aa)
-        bo=a8.a2 if a8.ci==1 else a8.a0
+        # After move, a8.ci is side to move (opponent of mover)
+        # Check if side that JUST MOVED (-a8.ci) is in check BY side to move (a8.ci)
+        bo=a8.a2 if -a8.ci==1 else a8.a0
         if ds(a8,bo,a8.ci):
             dh(a8,aa,ck)
             continue
@@ -291,6 +294,7 @@ def dn(a8,ct,b7):
         if bc>=b7:return bc
         if bc>ct:ct=bc
     return ct
+
 def df(a8,cw,bq,ct,b7):
     cl[0]+=1
     if cl[0]&1023==0 and time.time()>dr[0]:raise TimeoutError
@@ -301,6 +305,7 @@ def df(a8,cw,bq,ct,b7):
             if c6==0:return bv
             if c6==1 and bv>=b7:return bv
             if c6==2 and bv<=ct:return bv
+    # Check if side to move is in check (before making move)
     bl=ds(a8,a8.a2 if a8.ci==1 else a8.a0,-a8.ci)
     if cw<=0:return dn(a8,ct,b7)
     b6=-bf
@@ -318,16 +323,15 @@ def df(a8,cw,bq,ct,b7):
     c0=0
     for a,aa in de:
         ck=cc(a8,aa)
-        bo=a8.a2 if a8.ci==1 else a8.a0
+        # After move, a8.ci is side to move (opponent of mover)
+        # Check if side that JUST MOVED (-a8.ci) is in check BY side to move (a8.ci)
+        bo=a8.a2 if -a8.ci==1 else a8.a0
         if ds(a8,bo,a8.ci):
             dh(a8,aa,ck)
             continue
         c0+=1
-        # LMR
-        rd=1 if c0>4 and cw>=3 and not a8.j[aa[1]] and aa[2]==0 and aa[3]!=1 else 0
-        bc=-df(a8,cw-1-rd,bq+1,-b7,-ct)
-        if rd and bc>ct:
-            bc=-df(a8,cw-1,bq+1,-b7,-ct)
+        # NO check extension - just standard depth
+        bc=-df(a8,cw-1,bq+1,-b7,-ct)
         dh(a8,aa,ck)
         if bc>b6:b6=bc;cu=aa
         if bc>ct:ct=bc
@@ -335,6 +339,7 @@ def df(a8,cw,bq,ct,b7):
     if not c0:return -b3+bq if bl else 0
     ak[y]=(y,cw,1 if b6>=b7 else(2 if b6<=ct else 0),b6,cu)
     return b6
+
 def d0(a8,dc=3500):
     global ak
     ak={}
@@ -344,13 +349,15 @@ def d0(a8,dc=3500):
     de=[]
     for aa in a5:
         ck=cc(a8,aa)
-        bo=a8.a2 if a8.ci==-1 else a8.a0
+        # After move, a8.ci is side to move
+        # Check if side that JUST MOVED (-a8.ci) is in check BY side to move (a8.ci)
+        bo=a8.a2 if -a8.ci==1 else a8.a0
         bt=not ds(a8,bo,a8.ci)
         dh(a8,aa,ck)
         if bt:de.append(aa)
     if not de:return None
     cu=de[0]
-    for cw in range(1,64):
+    for cw in range(1,MAX_PLY+1):
         dt=None
         c9=-bf
         ct=-bf
@@ -365,6 +372,7 @@ def d0(a8,dc=3500):
             if c9>99000:break
         except TimeoutError:break
     return cu
+
 def dp(ae):return chr(97+(ae&15))+str((ae>>4)+1)
 def dv(aa):
     ay,be,c3,a=aa
@@ -376,10 +384,12 @@ def dx(bm,a4=3500):
     a8.do(bm)
     aa=d0(a8,a4)
     return aa
+
 def dw(bx,ce,bp):
     ac=json.dumps(bp).encode()
     br=ureq.Request(bx+ce,data=ac,headers={"Content-Type":"application/json"},method="POST")
     return json.loads(ureq.urlopen(br,timeout=8).read().decode())
+
 def cb():
     bx=os.environ["MAKEFUN_ENV_URL"]
     w=None
@@ -411,4 +421,6 @@ def cb():
         try:
             ad=dw(bx,"/move",{"game":w,"move":a5})
         except Exception as n:break
+
 if __name__=="__main__":cb()
+
